@@ -1,8 +1,10 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import tasks
 from dotenv import load_dotenv
 import os, json
 import requests
+from datetime import datetime, timezone
+import time
 
 bot = discord.Client(
     command_prefix = ['!'],
@@ -16,7 +18,7 @@ if "last.json" not in os.listdir():
     with open('last.json', 'x') as f:
         f.write('{"inv": [], "darvo": "", "market": []}')
 
-@tasks.loop(seconds = 5)
+@tasks.loop(seconds = 10)
 async def mainLoop():
     embed = discord.Embed(
         title = "Item Notification",
@@ -39,22 +41,36 @@ async def mainLoop():
     with open('last.json', 'r') as f:
         last: dict[str, list[str]] = json.load(f)
 
+    def bolden(item: str):
+        for keyword in searchFor:
+            if keyword.lower() in item.lower():
+                return '**' + item + '**'
+        else:
+            return item
+        
     for keyword in searchFor:
         # Invasion
         for invasion in invasions:
-            # Get atker and defer
-            for stance in ('attacker', 'defender'):
-                try:
-                    reward: str = invasion[stance]['reward']['asString'] # its possible to get just the rewardTypes but this is more safer
+            dt: str = invasion['activation'].replace('Z', '+00:00')
+            epoch = datetime.fromisoformat(dt).astimezone(timezone.utc).timestamp()
 
-                    if keyword.lower() in reward.lower() and invasion['id'] not in last['inv'] and not invasion['completed']:
-                        embed.add_field(
-                            name = "Invasion Alert",
-                            value = f"Item: **{reward}**\nMission: {invasion['node']}"
-                        )
-                        last['inv'].append(invasion['id'])
-                except KeyError:
-                    continue
+            # Difference must be under 0 
+            difference = epoch - time.time()
+            if difference <= 0:
+                # Get atker and defer
+                for stance in ('attacker', 'defender'):
+                    try:
+                        reward: str = invasion[stance]['reward']['asString'] # its possible to get just the rewardTypes but this is more safer
+                        print(reward, keyword)
+                        if keyword.lower() in reward.lower() and invasion['id'] not in last['inv'] and not invasion['completed']:
+                            embed.add_field(
+                                name = "Invasion Alert",
+                                value = f"Attacker: {bolden(invasion['attacker']['reward']['asString'])}\nDefender: {bolden(invasion['defender']['reward']['asString'])}\nMission: {invasion['node']}"
+                            )
+                            last['inv'].append(invasion['id'])
+
+                    except KeyError:
+                        continue
 
         # Darvo deals
         deal = darvodeals[0]
